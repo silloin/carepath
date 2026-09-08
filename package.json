@@ -1,0 +1,28 @@
+{
+  "name": "carepath-marketplace",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace client\" \"npm run dev --workspace server\"",
+    "build": "npm run build --workspace client",
+    "test": "npm test --workspace server",
+    "check": "npm run build && npm test",
+    "start": "npm run start --workspace server",
+    "db:generate": "npm run db:generate --workspace server",
+    "db:migrate": "npm run db:migrate --workspace server",
+    "db:push": "npm run db:push --workspace server",
+    "db:seed": "npm run db:seed --workspace server"
+  },
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "dependencies": {
+    "axios": "^1.20.0",
+    "axios-cookiejar-support": "^7.0.0",
+    "tough-cookie": "^6.0.2"
+  }
+}
