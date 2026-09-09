@@ -1,134 +1,131 @@
 import { Link } from 'react-router-dom'
-import { ArrowRight, BadgeCheck, Activity, Heart, Bone, Brain } from 'lucide-react'
+import { ArrowRight, BadgeCheck } from 'lucide-react'
 
-const specialtyIcons = {
-  'Cardiology': Heart,
-  'Neurology': Brain,
-  'Orthopedics': Bone,
-  'General Surgery': Activity,
-  'default': Activity
+const TREATMENT_IMAGE_MAP = {
+  'Hair Transplant': '/treatment-images/hair transplant.jpg',
+  'Invisalign Treatment': '/treatment-images/invisalign.jpg',
+  'IVF (In-Vitro Fertilization) Treatment': '/treatment-images/ivf.jpg',
+  'Rhinoplasty (Nose Job)': '/treatment-images/rhinoplasty.jpg',
+  'Dental Implants': '/treatment-images/dental implants.jpg',
+  'ACL Reconstruction': '/treatment-images/acl.jpg',
+  'Angioplasty': '/treatment-images/angioplasty.jpg',
+  'Brain Tumor Surgery': '/treatment-images/brain tumor.jpg',
+  'Cancer Treatment': '/treatment-images/cancer treatment.jpg',
 }
 
+const FALLBACK_IMAGES = ['acl.jpg', 'angioplasty.jpg', 'brain tumor.jpg', 'cancer treatment.jpg']
+
+function getTreatmentImage(treatment, index) {
+  const exactName = treatment.name.toLowerCase() + '.jpg'
+  if (TREATMENT_IMAGE_MAP[treatment.name]) {
+    return TREATMENT_IMAGE_MAP[treatment.name]
+  }
+  const fallback = FALLBACK_IMAGES[index % FALLBACK_IMAGES.length]
+  return `/treatment-images/${fallback}`
+}
+
+function formatCost(treatment) {
+  const min = treatment.minEstimatedCost
+  const max = treatment.maxEstimatedCost || treatment.minEstimatedCost
+  if (!min) return null
+  const fmt = (n) => `$${(Number(n) / 80).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`
+  if (max && Number(max) !== Number(min)) {
+    return `${fmt(min)} – ${fmt(max)} · in India`
+  }
+  return `${fmt(min)} · in India`
+}
+
+const DEFAULT_FEATURED = [
+  {
+    slug: 'hair-transplant',
+    name: 'Hair Transplant',
+    specialty: { name: 'Cosmetic & Plastic Surgery' },
+    description: 'Check out the best doctors, hospitals & cost of Hair Transplant in India',
+    cost: '$1,500 – $4,000 · in India',
+  },
+  {
+    slug: 'invisalign-treatment',
+    name: 'Invisalign Treatment',
+    specialty: { name: 'Dentistry' },
+    description: 'Check out the best doctors, hospitals & cost of Invisalign Treatment in India',
+    cost: '$1,500 – $5,000 · in India',
+  },
+  {
+    slug: 'ivf-treatment',
+    name: 'IVF (In-Vitro Fertilization) Treatment',
+    specialty: { name: 'Infertility & IVF' },
+    description: 'Check out the best doctors, hospitals & cost of IVF Treatment in India',
+    cost: '$4,000 – $5,000 · in India',
+  },
+  {
+    slug: 'rhinoplasty',
+    name: 'Rhinoplasty (Nose Job)',
+    specialty: { name: 'Cosmetic & Plastic Surgery' },
+    description: 'Check out the best doctors, hospitals & cost of Rhinoplasty in India',
+    cost: '$4,000 – $6,000 · in India',
+  },
+  {
+    slug: 'dental-implants',
+    name: 'Dental Implants',
+    specialty: { name: 'Dentistry' },
+    description: 'Check out the best doctors, hospitals & cost of Dental Implants in India',
+    cost: '$1,000 – $6,000 · in India',
+  },
+]
+
 export function TreatmentSessionColumns({ treatments, hospitals }) {
-  const specialties = [...new Map(treatments?.map(t => [t.specialty.name, t.specialty]) || []).values()]
-  
   const topTreatments = [...(treatments || [])]
     .sort((a, b) => (b.hospitalCount || 0) - (a.hospitalCount || 0))
-    .slice(0, 6)
+    .slice(0, 5)
 
-  const topHospitals = [...(hospitals || [])]
-    .slice(0, 6)
+  const displayTreatments = topTreatments.length >= 3
+    ? topTreatments
+    : DEFAULT_FEATURED
 
   return (
-    <section className="treatment-session-section">
-      <div className="session-header">
-        <span className="kicker">Treatment Session</span>
-        <h2>Explore Top Treatments by Category</h2>
-        <p>Discover the most sought-after treatments across specialties with verified hospital providers</p>
-      </div>
+    <section className="featured-treatments">
+      <span className="ft-kicker">Most Sought-After Procedures</span>
+      <h2 className="ft-title">Featured <em>Treatments</em></h2>
+      <p className="ft-subtitle">The treatments international patients most often travel to India for</p>
 
-      <div className="treatment-columns">
-        <div className="treatment-column">
-          <div className="column-header">
-            <Activity size={20} />
-            <span>Most Requested</span>
-          </div>
-          {topTreatments.slice(0, 3).map((treatment, index) => (
-            <TreatmentCard key={treatment.id} treatment={treatment} rank={index + 1} />
-          ))}
-        </div>
-
-        <div className="treatment-column">
-          <div className="column-header">
-            <Heart size={20} />
-            <span>Cardiac Care</span>
-          </div>
-          {treatments
-            ?.filter(t => t.specialty.name === 'Cardiology')
-            .slice(0, 3)
-            .map((treatment, index) => (
-              <TreatmentCard key={treatment.id} treatment={treatment} />
-            ))}
-        </div>
-
-        <div className="treatment-column">
-          <div className="column-header">
-            <Bone size={20} />
-            <span>Orthopedics</span>
-          </div>
-          {treatments
-            ?.filter(t => t.specialty.name === 'Orthopedics')
-            .slice(0, 3)
-            .map((treatment, index) => (
-              <TreatmentCard key={treatment.id} treatment={treatment} />
-            ))}
-        </div>
-
-        <div className="treatment-column">
-          <div className="column-header">
-            <Brain size={20} />
-            <span>Neurology</span>
-          </div>
-          {treatments
-            ?.filter(t => t.specialty.name === 'Neurology')
-            .slice(0, 3)
-            .map((treatment, index) => (
-              <TreatmentCard key={treatment.id} treatment={treatment} />
-            ))}
-        </div>
-      </div>
-
-      <div className="session-header hospitals-header">
-        <h2>Top Hospitals</h2>
-        <p>Leading verified providers across India</p>
-      </div>
-
-      <div className="hospital-columns">
-        {topHospitals.map((hospital, index) => (
-          <HospitalCard key={hospital.id} hospital={hospital} rank={index + 1} />
-        ))}
+      <div className="ft-scroller">
+        {displayTreatments.map((treatment, index) => {
+          const costText = treatment.cost || formatCost(treatment)
+          const descText = treatment.description ||
+            `Check out the best doctors, hospitals & cost of ${treatment.name} in India`
+          return (
+            <Link
+              key={treatment.id || treatment.slug || index}
+              to={`/treatments/${treatment.slug}`}
+              className="ft-card"
+            >
+              <div className="ft-image-wrap">
+                <img
+                  src={getTreatmentImage(treatment, index)}
+                  alt={treatment.name}
+                  className="ft-image"
+                  onError={(e) => {
+                    const fallbackIdx = index % FALLBACK_IMAGES.length
+                    e.currentTarget.src = `/treatment-images/${FALLBACK_IMAGES[fallbackIdx]}`
+                  }}
+                />
+                <span className="ft-rank">{index + 1}</span>
+              </div>
+              <div className="ft-body">
+                <span className="ft-specialty">{treatment.specialty?.name || 'Featured'}</span>
+                <h3 className="ft-name">{treatment.name}</h3>
+                <p className="ft-desc">{descText}</p>
+                {costText && <div className="ft-cost"><span>{costText}</span></div>}
+                <span className="ft-cta">
+                  View Treatment <ArrowRight size={14} />
+                </span>
+              </div>
+            </Link>
+          )
+        })}
       </div>
     </section>
   )
 }
 
-function TreatmentCard({ treatment, rank }) {
-  const Icon = specialtyIcons[treatment.specialty.name] || specialtyIcons.default
-  
-  return (
-    <Link to={`/treatments/${treatment.slug}`} className="treatment-list-card">
-      {rank && <span className="rank-badge">{rank}</span>}
-      <div className="card-icon-small">
-        <Icon size={16} />
-      </div>
-      <div className="card-content">
-        <span className="specialty-tag">{treatment.specialty.name}</span>
-        <h4>{treatment.name}</h4>
-        <div className="card-stats">
-          <span className="hospital-count">
-            <BadgeCheck size={12} />
-            {treatment.hospitalCount || 0} hospitals
-          </span>
-        </div>
-      </div>
-      <ArrowRight size={16} className="card-arrow" />
-    </Link>
-  )
-}
-
-function HospitalCard({ hospital, rank }) {
-  return (
-    <Link to={`/hospitals/${hospital.slug}`} className="hospital-list-card">
-      {rank && <span className="rank-badge">{rank}</span>}
-      <div className="hospital-info">
-        <h4>{hospital.name}</h4>
-        <p>{hospital.city}, {hospital.country}</p>
-        <span className="verified-badge">
-          <BadgeCheck size={12} />
-          Verified
-        </span>
-      </div>
-      <ArrowRight size={16} className="card-arrow" />
-    </Link>
-  )
-}
+export default TreatmentSessionColumns

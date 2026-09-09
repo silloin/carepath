@@ -10,8 +10,7 @@ import { DataState } from '../components/DataState'
 
 import { AdminTreatmentModeration } from './AdminTreatmentModeration'
 import { CreateHospitalForm } from './CreateHospitalForm'
-
-
+import { DashboardShell } from '../App'
 
 export function AdminMarketplace() {
   const [visibleCount, setVisibleCount] = useState(10)
@@ -42,7 +41,83 @@ export function AdminMarketplace() {
     return <CreateHospitalForm onSuccess={() => { hospitals.refetch(); setShowCreateHospital(false) }} onCancel={() => setShowCreateHospital(false)} />
   }
 
-  return <main className="dashboard-page"><div className="dashboard-main marketplace-page"><span className="kicker">Admin marketplace</span><h1>Verify the network.</h1><div className="dashboard-grid"><section className="dashboard-panel"><div className="panel-heading"><div><span className="kicker">Hospital verification</span><h2>Registration queue</h2></div><span className="status-pill">{hospitals.data?.length || 0} hospitals</span><button className="button button-dark button-small" onClick={() => setShowCreateHospital(true)}><Plus size={14} /> Create Hospital</button></div><DataState loading={hospitals.isLoading} error={hospitals.error} empty="No hospital registrations waiting for review.">{visibleHospitals.map((hospital) => <article className="marketplace-treatment" key={hospital.id}><div><h3>{hospital.name}</h3><p>{hospital.city}, {hospital.country} · {hospital.user.email}</p><span className="status-pill">{hospital.status.replaceAll('_', ' ')}</span></div><div className="verification-actions"><button className="button button-dark button-small" onClick={async () => { await verifyHospital(hospital.id, 'verify'); hospitals.refetch() }}><BadgeCheck size={14} /> Approve</button><button className="text-button" onClick={async () => { await verifyHospital(hospital.id, 'request-changes', { notes: 'Please complete the hospital profile before approval.' }); hospitals.refetch() }}>Request changes</button><button className="text-button danger-button" onClick={async () => { await verifyHospital(hospital.id, 'suspend'); hospitals.refetch() }}>Suspend</button></div></article>)}</DataState>{hasMore && <button className="button button-light button-small" onClick={loadMore} style={{ marginTop: '1rem' }}>Load more hospitals ({hospitals.data?.length - visibleCount} remaining)</button>}</section><section className="dashboard-panel"><span className="kicker">Central catalog</span><h2>Specialties and treatments</h2><form className="inline-create" onSubmit={async (event) => { event.preventDefault(); await createSpecialty(specialty); setSpecialty(''); specialties.refetch() }}><input value={specialty} onChange={(event) => setSpecialty(event.target.value)} placeholder="New specialty" required /><button className="button button-light">Add specialty</button></form><form className="case-form marketplace-form" onSubmit={create}><div className="form-grid"><input value={treatment.name} onChange={(event) => setTreatment({ ...treatment, name: event.target.value })} placeholder="Treatment name" required /><input value={treatment.slug} onChange={(event) => setTreatment({ ...treatment, slug: event.target.value })} placeholder="treatment-slug" required /></div><select value={treatment.specialtyId} onChange={(event) => setTreatment({ ...treatment, specialtyId: event.target.value })} required><option value="">Select specialty</option>{specialties.data?.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><textarea value={treatment.description} onChange={(event) => setTreatment({ ...treatment, description: event.target.value })} placeholder="Treatment overview" /><button className="button button-coral">Create treatment <ArrowRight size={16} /></button>{message && <div className="form-success">{message}</div>}</form><DataState loading={catalog.isLoading} error={catalog.error} empty="No treatments in the central catalog."><div className="catalog-list">{catalog.data?.map((item) => <div key={item.id}><strong>{item.name}</strong><span>{item.specialty.name}</span></div>)}</div></DataState></section></div><AdminTreatmentModeration /></div></main>
+  // Wrap in DashboardShell to get admin navigation sidebar
+  return (
+    <DashboardShell 
+      role="ADMIN" 
+      title="Admin Overview" 
+      description="Manage your healthcare platform, verify hospitals, moderate treatments, and oversee all platform activity."
+    >
+      <div className="dashboard-main marketplace-page">
+        <span className="kicker">Admin marketplace</span>
+        <h1>Verify the network.</h1>
+        <div className="dashboard-grid">
+          <section className="dashboard-panel">
+            <div className="panel-heading">
+              <div>
+                <span className="kicker">Hospital verification</span>
+                <h2>Registration queue</h2>
+              </div>
+              <span className="status-pill">{hospitals.data?.length || 0} hospitals</span>
+              <button className="button button-dark button-small" onClick={() => setShowCreateHospital(true)}>
+                <Plus size={14} /> Create Hospital
+              </button>
+            </div>
+            <DataState loading={hospitals.isLoading} error={hospitals.error} empty="No hospital registrations waiting for review.">
+              {visibleHospitals.map((hospital) => (
+                <article className="marketplace-treatment" key={hospital.id}>
+                  <div>
+                    <h3>{hospital.name}</h3>
+                    <p>{hospital.city}, {hospital.country} · {hospital.user.email}</p>
+                    <span className="status-pill">{hospital.status.replaceAll('_', ' ')}</span>
+                  </div>
+                  <div className="verification-actions">
+                    <button className="button button-dark button-small" onClick={async () => { await verifyHospital(hospital.id, 'verify'); hospitals.refetch() }}>
+                      <BadgeCheck size={14} /> Approve
+                    </button>
+                    <button className="text-button" onClick={async () => { await verifyHospital(hospital.id, 'request-changes', { notes: 'Please complete the hospital profile before approval.' }); hospitals.refetch() }}>
+                      Request changes
+                    </button>
+                    <button className="text-button danger-button" onClick={async () => { await verifyHospital(hospital.id, 'suspend'); hospitals.refetch() }}>
+                      Suspend
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </DataState>
+            {hasMore && <button className="button button-light button-small" onClick={loadMore} style={{ marginTop: '1rem' }}>Load more hospitals ({hospitals.data?.length - visibleCount} remaining)</button>}
+          </section>
+          <section className="dashboard-panel">
+            <span className="kicker">Central catalog</span>
+            <h2>Specialties and treatments</h2>
+            <form className="inline-create" onSubmit={async (event) => { event.preventDefault(); await createSpecialty(specialty); setSpecialty(''); specialties.refetch() }}>
+              <input value={specialty} onChange={(event) => setSpecialty(event.target.value)} placeholder="New specialty" required />
+              <button className="button button-light">Add specialty</button>
+            </form>
+            <form className="case-form marketplace-form" onSubmit={create}>
+              <div className="form-grid">
+                <input value={treatment.name} onChange={(event) => setTreatment({ ...treatment, name: event.target.value })} placeholder="Treatment name" required />
+                <input value={treatment.slug} onChange={(event) => setTreatment({ ...treatment, slug: event.target.value })} placeholder="treatment-slug" required />
+              </div>
+              <select value={treatment.specialtyId} onChange={(event) => setTreatment({ ...treatment, specialtyId: event.target.value })} required>
+                <option value="">Select specialty</option>
+                {specialties.data?.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}
+              </select>
+              <textarea value={treatment.description} onChange={(event) => setTreatment({ ...treatment, description: event.target.value })} placeholder="Treatment overview" />
+              <button className="button button-coral">Create treatment <ArrowRight size={16} /></button>
+              {message && <div className="form-success">{message}</div>}
+            </form>
+            <DataState loading={catalog.isLoading} error={catalog.error} empty="No treatments in the central catalog.">
+              <div className="catalog-list">
+                {catalog.data?.map((item) => <div key={item.id}><strong>{item.name}</strong><span>{item.specialty.name}</span></div>)}
+              </div>
+            </DataState>
+          </section>
+        </div>
+        <AdminTreatmentModeration />
+      </div>
+    </DashboardShell>
+  )
 
 }
 
@@ -317,74 +392,116 @@ export function AdminReviews() {
   const query = useQuery({ queryKey: ['admin-reviews'], queryFn: () => getAdminReviews() })
 
   return (
+    <DashboardShell 
+      role="ADMIN" 
+      title="Platform reviews" 
+      description="Review and manage patient feedback on hospitals and treatments."
+    >
+      <div className="dashboard-main">
+        <section className="dashboard-panel">
 
-    <section className="dashboard-panel">
+          <div className="panel-heading">
 
-      <div className="panel-heading">
+            <div>
 
-        <div>
+              <span className="kicker">Patient Feedback</span>
 
-          <span className="kicker">Patient Feedback</span>
+              <h2>Hospital Reviews</h2>
 
-          <h2>Hospital Reviews</h2>
+            </div>
 
-        </div>
+            <span className="status-pill">{query.data?.total || 0} reviews</span>
 
-        <span className="status-pill">{query.data?.total || 0} reviews</span>
+          </div>
 
+          <DataState loading={query.isLoading} error={query.error} empty="No patient reviews published yet.">
+
+            <div className="moderation-list">
+
+              {query.data?.reviews?.map((review) => (
+
+                <article className="moderation-row" key={review.id}>
+
+                  <div className="moderation-main">
+
+                    <div>
+
+                      <strong>{review.hospital?.name} — {review.patientCase?.treatment?.name}</strong>
+
+                      <span>By: {review.patient?.firstName} {review.patient?.lastName}</span>
+
+                    </div>
+
+                    <div>
+
+                      <span className="status-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+
+                        <Star size={12} fill="currentColor" /> {review.overallRating} / 5
+
+                      </span>
+
+                      <span>Hospital: {review.hospitalRating}★ · Comm: {review.communicationRating}★ · Treatment: {review.treatmentExperience}★</span>
+
+                    </div>
+
+                    {review.writtenReview && <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem', color: '#444' }}>"{review.writtenReview}"</p>}
+
+                    <div className="moderation-dates">
+
+                      <span>Submitted {new Date(review.createdAt).toLocaleDateString()}</span>
+
+                    </div>
+
+                  </div>
+
+                </article>
+
+              ))}
+
+            </div>
+
+          </DataState>
+        </section>
       </div>
-
-      <DataState loading={query.isLoading} error={query.error} empty="No patient reviews published yet.">
-
-        <div className="moderation-list">
-
-          {query.data?.reviews?.map((review) => (
-
-            <article className="moderation-row" key={review.id}>
-
-              <div className="moderation-main">
-
-                <div>
-
-                  <strong>{review.hospital?.name} — {review.patientCase?.treatment?.name}</strong>
-
-                  <span>By: {review.patient?.firstName} {review.patient?.lastName}</span>
-
-                </div>
-
-                <div>
-
-                  <span className="status-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-
-                    <Star size={12} fill="currentColor" /> {review.overallRating} / 5
-
-                  </span>
-
-                  <span>Hospital: {review.hospitalRating}★ · Comm: {review.communicationRating}★ · Treatment: {review.treatmentExperience}★</span>
-
-                </div>
-
-                {review.writtenReview && <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem', color: '#444' }}>"{review.writtenReview}"</p>}
-
-                <div className="moderation-dates">
-
-                  <span>Submitted {new Date(review.createdAt).toLocaleDateString()}</span>
-
-                </div>
-
-              </div>
-
-            </article>
-
-          ))}
-
-        </div>
-
-      </DataState>
-
-    </section>
-
+    </DashboardShell>
   )
-
 }
 
+export function AdminTreatments() {
+  const treatments = useQuery({ queryKey: ['admin-treatments'], queryFn: getCatalog })
+
+  return (
+    <DashboardShell 
+      role="ADMIN" 
+      title="Treatment catalog" 
+      description="Manage and moderate all treatments available on the platform."
+    >
+      <div className="dashboard-main">
+        <section className="dashboard-panel">
+          <div className="panel-heading">
+            <div>
+              <span className="kicker">Platform Catalog</span>
+              <h2>All platform treatments</h2>
+            </div>
+            <span className="status-pill">{treatments.data?.length || 0} treatments</span>
+          </div>
+          <DataState loading={treatments.isLoading} error={treatments.error} empty="No treatments in the catalog yet.">
+            <div className="moderation-list">
+              {treatments.data?.map(treatment => (
+                <article className="moderation-row" key={treatment.id}>
+                  <div className="moderation-main">
+                    <div>
+                      <strong>{treatment.name}</strong>
+                      <p>{treatment.specialty.name}</p>
+                    </div>
+                    <ArrowRight size={18} />
+                  </div>
+                </article>
+              ))}
+            </div>
+          </DataState>
+        </section>
+      </div>
+    </DashboardShell>
+  )
+}

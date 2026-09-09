@@ -65,6 +65,7 @@ export async function getCases() { return (await api.get('/patient/cases')).data
 export async function getCase(id) { return (await api.get(`/patient/cases/${id}`)).data.data }
 
 export async function uploadReport(caseId, file, category) { const body = new FormData(); body.append('report', file); body.append('category', category); return (await api.post(`/patient/cases/${caseId}/reports`, body)).data.data }
+export async function deleteReport(caseId, reportId) { return (await api.delete(`/patient/cases/${caseId}/reports/${reportId}`)).data.data }
 
 export async function requestAppointment(caseId, payload) { return (await api.post(`/patient/cases/${caseId}/appointments`, payload)).data.data }
 
@@ -77,6 +78,7 @@ export async function updateCaseStatus(id, status) { return (await api.patch(`/h
 export async function sendHospitalResponse(id, payload) { return (await api.post(`/hospital/cases/${id}/response`, payload)).data.data }
 
 export async function confirmAppointment(id, status) { return (await api.patch(`/hospital/appointments/${id}`, { status })).data.data }
+export async function updateAppointmentDateTime(id, preferredAt) { return (await api.patch(`/hospital/appointments/${id}`, { preferredAt })).data.data }
 
 export async function submitReview(id, payload) { return (await api.post(`/patient/cases/${id}/review`, payload)).data.data }
 
@@ -118,7 +120,7 @@ export async function updateHospital(id, payload) { return (await api.put(`/admi
 
 export async function createSpecialty(name) { return (await api.post('/specialties', { name })).data.data }
 
-export async function createTreatment(payload) { return (await api.post('/treatments', payload)).data.data }
+export async function createTreatment(payload) { return (await api.post('/admin/treatments', payload)).data.data }
 
 export async function getAdminHospitalTreatments(params = {}) { return (await api.get('/admin/hospital-treatments', { params })).data.data }
 

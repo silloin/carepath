@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs'
 
 import multer from 'multer'
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, unlink } from 'node:fs/promises'
 
 import { join } from 'node:path'
 
@@ -30,19 +30,63 @@ const authSchema = z.object({ email: z.string().email(), password: z.string().mi
 
 const hospitalRegistrationSchema = authSchema.extend({ name: z.string().min(2), phone: z.string().min(6), city: z.string().min(2), country: z.string().min(2).default('India'), state: z.string().optional(), address: z.string().min(5), website: z.string().url().optional().or(z.literal('')), hospitalType: z.string().optional(), beds: z.coerce.number().int().positive().optional(), icuBeds: z.coerce.number().int().nonnegative().optional(), description: z.string().optional(), internationalSupport: z.boolean().optional(), languages: z.string().optional() })
 
+const emptyToNull = (value) => (value === '' ? null : value);
+
 const adminHospitalCreationSchema = z.object({
 
   name: z.string().min(2),
 
   email: z.string().email(),
 
+  password: z.string().min(8).optional().or(z.literal('')).transform(emptyToNull),
+
+  confirmPassword: z.string().min(8).optional().or(z.literal('')).transform(emptyToNull),
+
+  phone: z.string().min(6).optional().or(z.literal('')).transform(emptyToNull),
+
   city: z.string().min(2),
 
   country: z.string().min(2).default('India'),
 
-  description: z.string().optional(),
+  state: z.string().optional().or(z.literal('')).transform(emptyToNull),
 
-})
+  address: z.string().min(5).optional().or(z.literal('')).transform(emptyToNull),
+
+  website: z.string().url().optional().or(z.literal('')).transform(emptyToNull),
+
+  hospitalType: z.string().optional().or(z.literal('')).transform(emptyToNull),
+
+  beds: z.union([z.coerce.number().int().positive(), z.literal('')]).optional().transform(emptyToNull),
+
+  icuBeds: z.union([z.coerce.number().int().nonnegative(), z.literal('')]).optional().transform(emptyToNull),
+
+  description: z.string().optional().or(z.literal('')).transform(emptyToNull),
+
+  internationalSupport: z.boolean().optional(),
+
+  languages: z.string().optional().or(z.literal('')).transform(emptyToNull),
+
+}).superRefine((input, ctx) => {
+
+  if (input.password && !input.confirmPassword) {
+
+    ctx.addIssue({ code: 'custom', path: ['confirmPassword'], message: 'Confirm password is required when setting a password.' });
+
+  }
+
+  if (!input.password && input.confirmPassword) {
+
+    ctx.addIssue({ code: 'custom', path: ['password'], message: 'Password is required when confirming a password.' });
+
+  }
+
+  if (input.password && input.confirmPassword && input.password !== input.confirmPassword) {
+
+    ctx.addIssue({ code: 'custom', path: ['confirmPassword'], message: 'Passwords do not match.' });
+
+  }
+
+});
 
 const patientRegistrationSchema = authSchema.extend({ firstName: z.string().min(2), lastName: z.string().min(2), country: z.string().optional() })
 
@@ -719,13 +763,10 @@ router.put('/admin/hospitals/:id', requireAuth, requireRole('ADMIN'), async (req
 
 
     if (input.email && input.email.toLowerCase() !== hospital.user.email) {
-
       const existingUser = await prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
-
       if (existingUser && existingUser.id !== hospital.userId) {
-
+        console.log(`Email update conflict detected: ${input.email} exists with role: ${existingUser.role}, user ID: ${existingUser.id}`);
         return failure(response, 'A user with this email already exists.', 409);
-
       }
 
       await prisma.user.update({
@@ -776,85 +817,9 @@ router.put('/admin/hospitals/:id', requireAuth, requireRole('ADMIN'), async (req
 
 
 
-router.post('/admin/hospitals', requireAuth, requireRole('ADMIN'), async (request, response, next) => {
-
-  try {
-
-    const input = adminHospitalCreationSchema.parse(request.body);
-
-
-
-    const existingUser = await prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
-
-    if (existingUser) {
-
-      return failure(response, 'A user with this email already exists.', 409);
-
-    }
-
-
-
-    const temporaryPassword = Math.random().toString(36).slice(-10);
-
-    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
-
-
-
-    const user = await prisma.user.create({
-
-      data: {
-
-        email: input.email.toLowerCase(),
-
-        passwordHash,
-
-        role: 'HOSPITAL',
-
-        mustChangePassword: true,
-
-      },
-
-    });
-
-
-
-    const hospital = await prisma.hospital.create({
-
-      data: {
-
-        name: input.name,
-
-        city: input.city,
-
-        country: input.country,
-
-        description: input.description,
-
-        userId: user.id,
-
-        status: 'PENDING_VERIFICATION', // Default status for newly created hospitals
-
-      },
-
-    });
-
-
-
-    return success(response, 'Hospital account created successfully', { hospital, temporaryPassword }, 201);
-
-  } catch (error) {
-
-    return next(error);
-
-  }
-
-});
-
-
-
 router.post('/patient/cases', requireAuth, requireRole('PATIENT'), async (request, response, next) => { try { const patient = await prisma.patient.findUnique({ where: { userId: request.auth.sub } }); const input = z.object({ hospitalId: z.string(), treatmentId: z.string(), description: z.string().max(5000).optional() }).parse(request.body); const provider = await prisma.hospitalTreatment.findFirst({ where: { hospitalId: input.hospitalId, treatmentId: input.treatmentId, availability: 'AVAILABLE', approvalStatus: 'APPROVED', hospital: { status: 'VERIFIED' } } }); if (!provider) return failure(response, 'This hospital does not currently offer that treatment', 422); const newCase = await prisma.patientCase.create({ data: { ...input, patientId: patient.id, status: 'SUBMITTED', conversation: { create: { patientId: patient.id, hospitalId: input.hospitalId } } }, include: { hospital: true, treatment: true, conversation: true } }); await prisma.notification.create({ data: { userId: (await prisma.hospital.findUnique({ where: { id: input.hospitalId } })).userId, title: 'New patient case', body: 'A patient has submitted a case for your hospital.' } }); return success(response, 'Case submitted', newCase, 201) } catch (error) { return next(error) } })
 
-router.post('/patient/cases/:id/appointments', requireAuth, requireRole('PATIENT'), async (request, response, next) => { try { const patient = await prisma.patient.findUnique({ where: { userId: request.auth.sub } }); const input = z.object({ preferredAt: z.coerce.date(), type: z.string().default('HOSPITAL_CONSULTATION'), notes: z.string().optional() }).parse(request.body); const ownedCase = await prisma.patientCase.findFirst({ where: { id: request.params.id, patientId: patient.id }, include: { hospital: true } }); if (!ownedCase) return failure(response, 'Case not found', 404); const appointment = await prisma.appointment.create({ data: { caseId: ownedCase.id, ...input } }); await prisma.notification.create({ data: { userId: ownedCase.hospital.userId, title: 'Appointment requested', body: 'A patient has requested an appointment for an assigned case.' } }); return success(response, 'Appointment requested', appointment, 201) } catch (error) { return next(error) } })
+router.post('/patient/cases/:id/appointments', requireAuth, requireRole('PATIENT'), async (request, response, next) => { try { const patient = await prisma.patient.findUnique({ where: { userId: request.auth.sub } }); const input = z.object({ preferredAt: z.coerce.date(), type: z.string().default('HOSPITAL_CONSULTATION'), notes: z.string().optional() }).parse(request.body); const ownedCase = await prisma.patientCase.findFirst({ where: { id: request.params.id, patientId: patient.id }, include: { hospital: true } }); if (!ownedCase) return failure(response, 'Case not found', 404); const startOfDay = new Date(input.preferredAt); startOfDay.setHours(0,0,0,0); const endOfDay = new Date(input.preferredAt); endOfDay.setHours(23,59,59,999); const existingAppointments = await prisma.appointment.count({ where: { caseId: ownedCase.id, preferredAt: { gte: startOfDay, lte: endOfDay } } }); if (existingAppointments >= 2) return failure(response, 'Maximum two appointments per day are allowed for this case', 422); const appointment = await prisma.appointment.create({ data: { caseId: ownedCase.id, ...input } }); await prisma.notification.create({ data: { userId: ownedCase.hospital.userId, title: 'Appointment requested', body: 'A patient has requested an appointment for an assigned case.' } }); return success(response, 'Appointment requested', appointment, 201) } catch (error) { return next(error) } })
 
 router.post('/patient/cases/:id/reports', requireAuth, requireRole('PATIENT'), upload.single('report'), async (request, response, next) => { try { const patient = await prisma.patient.findUnique({ where: { userId: request.auth.sub } }); const ownedCase = await prisma.patientCase.findFirst({ where: { id: request.params.id, patientId: patient.id } }); if (!ownedCase) return failure(response, 'Case not found', 404); if (!request.file) return failure(response, 'A PDF, JPG, or PNG report is required', 422); const storageKey = `${randomUUID()}-${request.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`; const directory = join(process.cwd(), 'private-uploads'); await mkdir(directory, { recursive: true }); await writeFile(join(directory, storageKey), request.file.buffer); const report = await prisma.medicalReport.create({ data: { caseId: ownedCase.id, originalName: request.file.originalname, storageKey, mimeType: request.file.mimetype, size: request.file.size, category: String(request.body.category || 'OTHER') } }); return success(response, 'Report uploaded securely', report, 201) } catch (error) { return next(error) } })
 
@@ -862,13 +827,42 @@ router.get('/patient/cases/:caseId/reports/:reportId', requireAuth, requireRole(
 
 router.get('/hospital/cases/:caseId/reports/:reportId', requireAuth, requireRole('HOSPITAL'), async (request, response, next) => { try { const hospital = await prisma.hospital.findUnique({ where: { userId: request.auth.sub } }); const report = await prisma.medicalReport.findFirst({ where: { id: request.params.reportId, caseId: request.params.caseId, patientCase: { hospitalId: hospital.id } } }); if (!report) return failure(response, 'Report not found', 404); const file = await readFile(join(process.cwd(), 'private-uploads', report.storageKey)); await prisma.documentAccessLog.create({ data: { reportId: report.id, userId: request.auth.sub, action: 'HOSPITAL_READ' } }); return response.type(report.mimeType).send(file) } catch (error) { return next(error) } })
 
+router.delete('/patient/cases/:caseId/reports/:reportId', requireAuth, requireRole('PATIENT'), async (request, response, next) => {
+  try {
+    const patient = await prisma.patient.findUnique({ where: { userId: request.auth.sub } });
+    const report = await prisma.medicalReport.findFirst({ where: { id: request.params.reportId, caseId: request.params.caseId, patientCase: { patientId: patient.id } } });
+    if (!report) return failure(response, 'Report not found', 404);
+    // Delete the file from the filesystem
+    try {
+      await unlink(join(process.cwd(), 'private-uploads', report.storageKey));
+    } catch (fileError) {
+      console.warn('Could not delete file from storage:', fileError);
+    }
+    // Delete the report from the database
+    await prisma.medicalReport.delete({ where: { id: report.id } });
+    return success(response, 'Report deleted successfully', null, 200);
+  } catch (error) {
+    return next(error);
+  }
+})
+
 router.get('/hospital/cases', requireAuth, requireRole('HOSPITAL'), async (request, response, next) => { try { const hospital = await prisma.hospital.findUnique({ where: { userId: request.auth.sub } }); const cases = await prisma.patientCase.findMany({ where: { hospitalId: hospital.id }, include: { patient: true, treatment: true, reports: true, responses: true, appointments: true, conversation: { include: { messages: { orderBy: { createdAt: 'asc' } } } } }, orderBy: { createdAt: 'desc' } }); return success(response, 'Assigned cases loaded', cases) } catch (error) { return next(error) } })
 
 router.patch('/hospital/cases/:id/status', requireAuth, requireRole('HOSPITAL'), async (request, response, next) => { try { const hospital = await prisma.hospital.findUnique({ where: { userId: request.auth.sub } }); const input = z.object({ status: z.enum(['SUBMITTED', 'UNDER_REVIEW', 'RESPONDED', 'HOSPITAL_SELECTED', 'COMPLETED', 'CANCELLED']) }).parse(request.body); const ownedCase = await prisma.patientCase.findFirst({ where: { id: request.params.id, hospitalId: hospital.id } }); if (!ownedCase) return failure(response, 'Case not found', 404); const updated = await prisma.patientCase.update({ where: { id: ownedCase.id }, data: { status: input.status }, include: { patient: true } }); await prisma.notification.create({ data: { userId: updated.patient.userId, title: 'Case status updated', body: `Your case is now ${input.status.replaceAll('_', ' ').toLowerCase()}.` } }); return success(response, 'Case status updated', updated) } catch (error) { return next(error) } })
 
 router.post('/hospital/cases/:id/response', requireAuth, requireRole('HOSPITAL'), async (request, response, next) => { try { const hospital = await prisma.hospital.findUnique({ where: { userId: request.auth.sub } }); const input = z.object({ summary: z.string().min(5), recommendedNextStep: z.string().min(5), estimatedTreatmentCost: z.coerce.number().nonnegative().optional(), estimatedHospitalStay: z.string().optional(), additionalInformation: z.string().optional() }).parse(request.body); const ownedCase = await prisma.patientCase.findFirst({ where: { id: request.params.id, hospitalId: hospital.id }, include: { patient: true } }); if (!ownedCase) return failure(response, 'Case not found', 404); const result = await prisma.$transaction(async (transaction) => { const reply = await transaction.hospitalResponse.create({ data: { caseId: ownedCase.id, ...input } }); await transaction.patientCase.update({ where: { id: ownedCase.id }, data: { status: 'RESPONDED' } }); await transaction.notification.create({ data: { userId: ownedCase.patient.userId, title: 'Hospital response received', body: 'Your hospital has responded to your case.' } }); return reply }); return success(response, 'Hospital response sent', result, 201) } catch (error) { return next(error) } })
 
-router.patch('/hospital/appointments/:id', requireAuth, requireRole('HOSPITAL'), async (request, response, next) => { try { const hospital = await prisma.hospital.findUnique({ where: { userId: request.auth.sub } }); const input = z.object({ status: z.enum(['CONFIRMED', 'CANCELLED', 'COMPLETED']) }).parse(request.body); const appointment = await prisma.appointment.findFirst({ where: { id: request.params.id, patientCase: { hospitalId: hospital.id }, }, include: { patientCase: { include: { patient: true } } } }); if (!appointment) return failure(response, 'Appointment not found', 404); const updated = await prisma.appointment.update({ where: { id: appointment.id }, data: { status: input.status } }); await prisma.notification.create({ data: { userId: appointment.patientCase.patient.userId, title: 'Appointment updated', body: `Your appointment is ${input.status.toLowerCase()}.` } }); return success(response, 'Appointment updated', updated) } catch (error) { return next(error) } })
+router.patch('/hospital/appointments/:id', requireAuth, requireRole('HOSPITAL'), async (request, response, next) => { try { const hospital = await prisma.hospital.findUnique({ where: { userId: request.auth.sub } }); const input = z.object({ 
+  status: z.enum(['CONFIRMED', 'CANCELLED', 'COMPLETED']).optional(),
+  preferredAt: z.coerce.date().optional()
+}).parse(request.body); const appointment = await prisma.appointment.findFirst({ where: { id: request.params.id, patientCase: { hospitalId: hospital.id }, }, include: { patientCase: { include: { patient: true } } } }); if (!appointment) return failure(response, 'Appointment not found', 404); const updateData = {};
+if (input.status) updateData.status = input.status;
+if (input.preferredAt) updateData.preferredAt = input.preferredAt;
+const updated = await prisma.appointment.update({ where: { id: appointment.id }, data: updateData }); 
+const notificationBody = input.status 
+  ? `Your appointment is ${input.status.toLowerCase()}.`
+  : `Your appointment has been rescheduled to ${new Date(input.preferredAt).toLocaleString()}.`;
+await prisma.notification.create({ data: { userId: appointment.patientCase.patient.userId, title: 'Appointment updated', body: notificationBody } }); return success(response, 'Appointment updated', updated) } catch (error) { return next(error) } })
 
 router.post('/patient/cases/:id/review', requireAuth, requireRole('PATIENT'), async (request, response, next) => { try { const patient = await prisma.patient.findUnique({ where: { userId: request.auth.sub } }); const input = z.object({ overallRating: z.coerce.number().int().min(1).max(5), hospitalRating: z.coerce.number().int().min(1).max(5), communicationRating: z.coerce.number().int().min(1).max(5), treatmentExperience: z.coerce.number().int().min(1).max(5), writtenReview: z.string().max(2000).optional() }).parse(request.body); const completedCase = await prisma.patientCase.findFirst({ where: { id: request.params.id, patientId: patient.id, status: 'COMPLETED' } }); if (!completedCase) return failure(response, 'A review is available after a completed case', 422); return success(response, 'Review submitted', await prisma.review.create({ data: { caseId: completedCase.id, patientId: patient.id, hospitalId: completedCase.hospitalId, ...input } }), 201) } catch (error) { return next(error) } })
 
@@ -886,27 +880,238 @@ router.patch('/admin/hospitals/:id/request-changes', requireAuth, requireRole('A
 
 router.patch('/admin/hospitals/:id/suspend', requireAuth, requireRole('ADMIN'), async (request, response, next) => { try { const hospital = await prisma.hospital.update({ where: { id: request.params.id }, data: { status: 'SUSPENDED', verification: { upsert: { create: { status: 'SUSPENDED', reviewedAt: new Date() }, update: { status: 'SUSPENDED', reviewedAt: new Date() } } } } }); return success(response, 'Hospital suspended', hospital) } catch (error) { return next(error) } })
 
+// =================== CENTRAL CATALOG: SPECIALTIES & TREATMENTS (ADMIN ONLY) ===================
+// Create Specialty (Admin only)
+router.post('/admin/specialties', requireAuth, requireRole('ADMIN'), async (request, response, next) => {
+  try {
+    const { name } = z.object({ name: z.string().min(2).max(100) }).parse(request.body);
+    
+    const existing = await prisma.specialty.findUnique({ where: { name } });
+    if (existing) {
+      return failure(response, 'Specialty with this name already exists', 409);
+    }
+
+    const specialty = await prisma.specialty.create({ data: { name } });
+    return success(response, 'Specialty created successfully', specialty, 201);
+  } catch (error) { return next(error); }
+});
+
+// Get all Specialties (Public)
+router.get('/specialties', async (_request, response, next) => {
+  try {
+    const specialties = await prisma.specialty.findMany({
+      include: { treatments: { select: { id: true, name: true, slug: true, description: true } } },
+      orderBy: { name: 'asc' }
+    });
+    return success(response, 'Specialties loaded', specialties);
+  } catch (error) { return next(error); }
+});
+
+// Update Specialty (Admin only)
+router.put('/admin/specialties/:id', requireAuth, requireRole('ADMIN'), async (request, response, next) => {
+  try {
+    const { name } = z.object({ name: z.string().min(2).max(100) }).parse(request.body);
+    const specialty = await prisma.specialty.update({
+      where: { id: request.params.id },
+      data: { name }
+    });
+    return success(response, 'Specialty updated successfully', specialty);
+  } catch (error) { return next(error); }
+});
+
+// Delete Specialty (Admin only)
+router.delete('/admin/specialties/:id', requireAuth, requireRole('ADMIN'), async (request, response, next) => {
+  try {
+    await prisma.specialty.delete({ where: { id: request.params.id } });
+    return success(response, 'Specialty deleted successfully');
+  } catch (error) { return next(error); }
+});
+
+// Create Treatment (Admin only)
+router.post('/admin/treatments', requireAuth, requireRole('ADMIN'), async (request, response, next) => {
+  try {
+    const input = z.object({
+      name: z.string().min(2).max(200),
+      description: z.string().max(5000).optional(),
+      specialtyId: z.string().cuid()
+    }).parse(request.body);
+
+    const slug = `${input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${Date.now()}`;
+    
+    const existing = await prisma.treatment.findUnique({ where: { slug } });
+    if (existing) {
+      return failure(response, 'Treatment with similar name already exists', 409);
+    }
+
+    const treatment = await prisma.treatment.create({
+      data: { ...input, slug },
+      include: { specialty: true }
+    });
+    return success(response, 'Treatment created successfully', treatment, 201);
+  } catch (error) { return next(error); }
+});
+
+// Get all Treatments (Public)
+router.get('/treatments', async (_request, response, next) => {
+  try {
+    const treatments = await prisma.treatment.findMany({
+      include: { specialty: { select: { id: true, name: true } } },
+      orderBy: { name: 'asc' }
+    });
+    return success(response, 'Treatments loaded', treatments);
+  } catch (error) { return next(error); }
+});
+
+// Get single Treatment by slug (Public)
+router.get('/treatments/:slug', async (request, response, next) => {
+  try {
+    const treatment = await prisma.treatment.findUnique({
+      where: { slug: request.params.slug },
+      include: { specialty: { select: { id: true, name: true } } }
+    });
+    if (!treatment) return failure(response, 'Treatment not found', 404);
+    return success(response, 'Treatment loaded', treatment);
+  } catch (error) { return next(error); }
+});
+
+// Update Treatment (Admin only)
+router.put('/admin/treatments/:id', requireAuth, requireRole('ADMIN'), async (request, response, next) => {
+  try {
+    const input = z.object({
+      name: z.string().min(2).max(200).optional(),
+      description: z.string().max(5000).optional(),
+      specialtyId: z.string().cuid().optional()
+    }).parse(request.body);
+
+    const treatment = await prisma.treatment.update({
+      where: { id: request.params.id },
+      data: input,
+      include: { specialty: true }
+    });
+    return success(response, 'Treatment updated successfully', treatment);
+  } catch (error) { return next(error); }
+});
+
+// Delete Treatment (Admin only)
+router.delete('/admin/treatments/:id', requireAuth, requireRole('ADMIN'), async (request, response, next) => {
+  try {
+    await prisma.treatment.delete({ where: { id: request.params.id } });
+    return success(response, 'Treatment deleted successfully');
+  } catch (error) { return next(error); }
+});
+
+// =================== HOSPITAL TREATMENT MODERATION ===================
+// Get all pending hospital treatments for moderation (Admin only)
+router.get('/admin/hospital-treatments/pending', requireAuth, requireRole('ADMIN'), async (_request, response, next) => {
+  try {
+    const pendingTreatments = await prisma.hospitalTreatment.findMany({
+      where: { approvalStatus: 'PENDING' },
+      include: {
+        hospital: { select: { id: true, name: true, slug: true } },
+        treatment: { select: { id: true, name: true, slug: true, specialty: { select: { name: true } } } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    return success(response, 'Pending hospital treatments loaded', pendingTreatments);
+  } catch (error) { return next(error); }
+});
+
+// Approve hospital treatment (Admin only)
+router.patch('/admin/hospital-treatments/:id/approve', requireAuth, requireRole('ADMIN'), async (request, response, next) => {
+  try {
+    const hospitalTreatment = await prisma.hospitalTreatment.update({
+      where: { id: request.params.id },
+      data: { approvalStatus: 'APPROVED' },
+      include: { hospital: { select: { name: true } }, treatment: { select: { name: true } } }
+    });
+    return success(response, 'Hospital treatment approved successfully', hospitalTreatment);
+  } catch (error) { return next(error); }
+});
+
+// Reject hospital treatment (Admin only)
+router.patch('/admin/hospital-treatments/:id/reject', requireAuth, requireRole('ADMIN'), async (request, response, next) => {
+  try {
+    const { notes } = z.object({ notes: z.string().min(3).max(1000).optional() }).parse(request.body);
+    const hospitalTreatment = await prisma.hospitalTreatment.update({
+      where: { id: request.params.id },
+      data: { approvalStatus: 'REJECTED' },
+      include: { hospital: { select: { name: true } }, treatment: { select: { name: true } } }
+    });
+    return success(response, 'Hospital treatment rejected successfully', hospitalTreatment);
+  } catch (error) { return next(error); }
+});
+
+// Hospital adds a treatment to their profile (HOSPITAL only) - auto-sets to PENDING if moderation needed
+router.post('/hospitals/me/treatments', requireAuth, requireRole('HOSPITAL'), async (request, response, next) => {
+  try {
+    const hospital = await prisma.hospital.findUnique({ where: { userId: request.user.id } });
+    if (!hospital) return failure(response, 'Hospital profile not found', 404);
+
+    const input = z.object({
+      treatmentId: z.string().cuid(),
+      minEstimatedCost: z.number().min(0).optional(),
+      maxEstimatedCost: z.number().min(0).optional(),
+      inclusions: z.string().optional(),
+      exclusions: z.string().optional()
+    }).parse(request.body);
+
+    const existing = await prisma.hospitalTreatment.findUnique({
+      where: { hospitalId_treatmentId: { hospitalId: hospital.id, treatmentId: input.treatmentId } }
+    });
+    if (existing) {
+      return failure(response, 'You have already added this treatment', 409);
+    }
+
+    const hospitalTreatment = await prisma.hospitalTreatment.create({
+      data: {
+        hospitalId: hospital.id,
+        treatmentId: input.treatmentId,
+        minEstimatedCost: input.minEstimatedCost,
+        maxEstimatedCost: input.maxEstimatedCost,
+        inclusions: input.inclusions,
+        exclusions: input.exclusions,
+        approvalStatus: 'PENDING' // Requires admin approval before being visible
+      },
+      include: { treatment: true }
+    });
+    return success(response, 'Treatment added successfully and submitted for approval', hospitalTreatment, 201);
+  } catch (error) { return next(error); }
+});
+
 
 
 router.post('/admin/hospitals', requireAuth, requireRole('ADMIN'), async (request, response, next) => {
 
   try {
 
-    const input = hospitalRegistrationSchema.parse(request.body);
+    const input = adminHospitalCreationSchema.parse(request.body);
 
     const existingUser = await prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
 
     if (existingUser) {
+      console.log(`Email conflict detected: ${input.email} exists with role: ${existingUser.role}, user ID: ${existingUser.id}`);
+      const roleText = existingUser.role === 'HOSPITAL'
+        ? 'an existing hospital account'
+        : existingUser.role === 'PATIENT'
+        ? 'a patient account'
+        : existingUser.role === 'ADMIN'
+        ? 'an admin account'
+        : 'an existing account';
 
-      return failure(response, 'A user with this email already exists.', 409);
-
+      return failure(response, `This email is already registered under ${roleText}. Please use a different email for the hospital.`, 409);
     }
 
 
 
-    const temporaryPassword = Math.random().toString(36).slice(-10); // Generate a random 10-character password
+    const useProvidedPassword = Boolean(input.password);
 
-    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+    const temporaryPassword = useProvidedPassword
+      ? undefined
+      : Math.random().toString(36).slice(-10); // Generate a random 10-character password
+
+    const passwordToHash = useProvidedPassword ? input.password : temporaryPassword;
+
+    const passwordHash = await bcrypt.hash(passwordToHash, 12);
 
     const slug = `${input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${Date.now()}`;
 
@@ -922,7 +1127,7 @@ router.post('/admin/hospitals', requireAuth, requireRole('ADMIN'), async (reques
 
         role: 'HOSPITAL',
 
-        mustChangePassword: true,
+        mustChangePassword: !useProvidedPassword,
 
         hospital: {
 
@@ -970,17 +1175,25 @@ router.post('/admin/hospitals', requireAuth, requireRole('ADMIN'), async (reques
 
 
 
-    return success(response, 'Hospital created successfully', {
+    const responsePayload = {
 
       id: user.id,
+
+      name: input.name,
 
       email: user.email,
 
       role: user.role,
 
-      temporaryPassword, // Return temporary password for admin to provide to hospital
+    };
 
-    }, 201);
+    if (temporaryPassword) {
+
+      responsePayload.temporaryPassword = temporaryPassword;
+
+    }
+
+    return success(response, 'Hospital created successfully', responsePayload, 201);
 
   } catch (error) {
 
@@ -1148,4 +1361,4 @@ router.get('/admin/reviews', requireAuth, requireRole('ADMIN'), async (request, 
 
 
 
-export default router
+export default router;

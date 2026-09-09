@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, BadgeCheck, HeartPulse, Search, ShieldCheck, Stethoscope } from 'lucide-react'
-import { api, createCase, getCases, getHospital, getHospitals, getTreatment, getTreatments, registerHospital } from './api'
+import { ArrowRight, BadgeCheck, FileText, HeartPulse, Search, ShieldCheck, Stethoscope } from 'lucide-react'
+import { api, createCase, getCases, getHospital, getHospitals, getTreatment, getTreatments, registerHospital, getHospitalTreatments, getHospitalCases } from './api'
 import { useAuth } from './store/auth'
 import { DataState } from './components/DataState'
 import { HospitalMarketplace, PublicHospitalDetail } from './pages/HospitalMarketplace'
-import { AdminMarketplace, AdminPatients, AdminCases, AdminAppointments, AdminReviews } from './pages/AdminMarketplace'
+import { AdminMarketplace, AdminPatients, AdminCases, AdminAppointments, AdminReviews, AdminTreatments } from './pages/AdminMarketplace'
 import { AdminHospitals } from './pages/AdminHospitals'
 
 import { TreatmentDirectory, HospitalDirectory } from './pages/PatientDiscovery'
@@ -17,7 +17,7 @@ import { HospitalCaseManagement } from './pages/HospitalWorkflow'
 import { AdminTreatmentModeration } from './pages/AdminTreatmentModeration'
 import { TreatmentSessionColumns } from './components/TreatmentSessionColumns'
 
-function Header() {
+export function Header() {
   const { user, signOut } = useAuth()
   return <header className="site-header"><Link className="brand" to="/"><span className="brand-mark"><HeartPulse size={20} /></span><span>carepath</span></Link><nav><Link to="/treatments">Treatments</Link><Link to="/hospitals">Hospitals</Link><a href="/#how-it-works">How it works</a><Link to="/cost-calculator">Cost estimate</Link></nav><div className="header-actions">{user ? <><Link className="text-button" to={user.role === 'PATIENT' ? '/patient/dashboard' : user.role === 'HOSPITAL' ? '/hospital/dashboard' : '/admin/dashboard'}>Dashboard</Link><button className="text-button plain-button" onClick={signOut}>Log out</button></> : <><Link className="text-button" to="/login">Log in</Link><Link className="button button-dark button-small" to="/register">Get started <ArrowRight size={15} /></Link></>}</div></header>
 }
@@ -31,9 +31,9 @@ function ProtectedRoute({ role, children }) {
   return children
 }
 
-function DashboardShell({ role, title, description, children }) {
-  const links = role === 'PATIENT' ? [['/patient/dashboard', 'Overview'], ['/patient/cases', 'My cases']] : role === 'HOSPITAL' ? [['/hospital/dashboard', 'Overview'], ['/hospital/profile', 'My profile'], ['/hospital/verification', 'Verification'], ['/hospital/treatments', 'Treatments']] : [['/admin/dashboard', 'Overview'], ['/admin/hospitals', 'Hospitals'], ['/admin/treatments', 'Treatments'], ['/admin/hospital-treatments', 'Hospital Treatment Moderation'], ['/admin/patients', 'Patients'], ['/admin/cases', 'Patient Cases'], ['/admin/appointments', 'Appointments'], ['/admin/reviews', 'Reviews']]
-  return <><Header /><main className="dashboard-page"><div className="dashboard-layout"><aside className="dashboard-nav"><span className="kicker">{role} workspace</span><strong>Carepath</strong>{links.map(([href, label]) => <Link to={href} key={href}>{label}</Link>)}</aside><section className="dashboard-main"><span className="kicker">Protected workspace</span><h1>{title}</h1><p className="detail-lede">{description}</p>{children}</section></div></main><Footer /></>
+export function DashboardShell({ role, title, description, children }) {
+  const links = role === 'PATIENT' ? [['/patient/dashboard', 'Overview'], ['/patient/cases', 'My cases']] : role === 'HOSPITAL' ? [['/hospital/dashboard', 'Overview'], ['/hospital/profile', 'My profile'], ['/hospital/verification', 'Verification'], ['/hospital/treatments', 'Treatments'], ['/hospital/treatments/new', 'Add treatment']] : [['/admin/dashboard', 'Overview'], ['/admin/hospitals', 'Hospitals'], ['/admin/treatments', 'Treatments'], ['/admin/hospital-treatments', 'Hospital Treatment Moderation'], ['/admin/patients', 'Patients'], ['/admin/cases', 'Patient Cases'], ['/admin/appointments', 'Appointments'], ['/admin/reviews', 'Reviews']]
+  return <><Header /><main className="dashboard-page"><div className="dashboard-layout"><aside className="dashboard-nav"><span className="kicker">{role} workspace</span><strong>Carepath</strong>{links.map(([href, label]) => <Link to={href} key={href}>{label}</Link>)}</aside><section className="dashboard-main">{role !== 'ADMIN' && <><span className="kicker">Protected workspace</span><h1>{title}</h1><p className="detail-lede">{description}</p></>}{children}</section></div></main><Footer /></>
 }
 
 function SearchBox() { const [query, setQuery] = useState(''); const navigate = useNavigate(); return <form className="search-box" onSubmit={(event) => { event.preventDefault(); navigate(`/treatments${query ? `?search=${encodeURIComponent(query)}` : ''}`) }}><Search size={20} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search a treatment, specialty or condition" /><button className="button button-coral" type="submit">Find care <ArrowRight size={17} /></button></form> }
@@ -63,7 +63,189 @@ const getTreatmentImage = (treatment, index) => {
   return '/images/doc.jpg'
 }
 
-function Home() { const treatments = useQuery({ queryKey: ['treatments'], queryFn: () => getTreatments() }); const hospitals = useQuery({ queryKey: ['hospitals'], queryFn: () => getHospitals() }); const [currentImage, setCurrentImage] = useState(0); useEffect(() => { const interval = setInterval(() => setCurrentImage(p => (p + 1) % backgroundImages.length), 10000); return () => clearInterval(interval) }, []); return <><Header /><main><section className="hero hero-slideshow">{backgroundImages.map((src, index) => <div key={src} className={`hero-background ${index === currentImage ? 'active' : ''}`} style={{ backgroundImage: `url(${src})` }} />)}<div className="hero-overlay" /><div className="hero-copy"><div className="eyebrow"><span className="eyebrow-dot" />A clearer way to plan care abroad</div><h1>Good care starts with a <em>better</em> next step.</h1><p className="hero-lede">Discover verified hospitals in India, compare real treatment estimates, and keep your medical journey in one calm, private place.</p><SearchBox /><div className="hero-trust"><span className="trust-chip"><ShieldCheck size={15} /> Verified providers</span><span className="trust-chip"><BadgeCheck size={15} /> Private case journey</span></div></div><div className="hero-visual"><div className="hero-photo"><div className="hero-photo-copy"><span>CAREPATH / 01</span><strong>Clarity for the<br /><em>journey ahead.</em></strong><small>One place to discover, compare and move forward.</small></div><div className="photo-caption"><span className="live-dot" />International patient desk<div><strong>24/7</strong><small>here to help</small></div></div></div></div></section><section className="trust-strip"><span>Built for decisions that feel human</span><div><span><BadgeCheck size={17} /> Real provider data</span></div></section><section className="section split-section" id="how-it-works"><div className="split-image"><div className="journey-graphic"><span>DISCOVER</span><strong>→</strong><span>COMPARE</span><strong>→</strong><span>PLAN</span><div className="journey-orbit" /></div><div className="image-tag"><HeartPulse size={18} /> Care that travels with you</div></div><div className="split-copy"><span className="kicker">Less searching. More certainty.</span><h2>Compare the details that actually matter.</h2><p>Every provider shares treatment-specific estimates, availability, stay guidance and international patient support, so you can make a considered choice.</p><div className="steps"><div><span>01</span><p><strong>Find your treatment</strong><small>Start with the care you need, not a maze of hospital websites.</small></p></div><div><span>02</span><p><strong>Compare real options</strong><small>Comparison activates only when multiple verified providers exist.</small></p></div><div><span>03</span><p><strong>Move forward privately</strong><small>Share reports securely and hear back from your chosen hospital.</small></p></div></div><Link className="button button-dark" to="/hospitals">Explore hospitals <ArrowRight size={17} /></Link></div></section><section className="cta-band"><div><span className="kicker">For hospitals building trust</span><h2>Make your expertise easier to find.</h2><p>Join a network designed for transparent treatment discovery and international patient care.</p></div></section></main><TreatmentSessionColumns treatments={treatments.data} hospitals={hospitals.data} /><Footer /></> }
+const SPECIALTY_GRID = [
+  { name: 'Bariatric & Metabolic Surgery', icon: '⚖️' },
+  { name: 'Cardiac Surgery', icon: '❤️' },
+  { name: 'Pediatric Cardiac Surgery', icon: '🧒' },
+  { name: 'Cardiology', icon: '💓' },
+  { name: 'Cosmetic & Plastic Surgery', icon: '✨' },
+  { name: 'Dentistry', icon: '🦷' },
+  { name: 'Dermatology', icon: '🧴' },
+  { name: 'ENT', icon: '👂' },
+  { name: 'Endocrinology & Diabetology', icon: '🧪' },
+];
+
+const JOURNEY_STEPS = [
+  { num: 1, icon: '📋', title: 'Share Your Reports', text: 'Share your complete medical history and medical complaints with a patient counselor. This will help you get proper treatment plan.' },
+  { num: 2, icon: '🏥', title: 'Compare Treatment Plans', text: 'Receive up to 3 personalised treatment plans from top specialists. Compare hospitals, doctors, costs, and outcomes — then choose what\'s right for you.' },
+  { num: 3, icon: '✈️', title: 'Visa & Travel Assistance', text: 'We handle your medical visa invitation, help plan your travel, and arrange comfortable accommodation near your hospital for you and your family.' },
+  { num: 4, icon: '👨‍⚕️', title: 'Hospital Care & Support', text: 'A dedicated coordinator stays with you throughout — from admission to discharge. Round-the-clock support, translation, and daily updates to your family.' },
+  { num: 5, icon: '🏨', title: 'Recover & Rest', text: 'Post-discharge stay at a nearby hotel with regular check-ups. Our team ensures your recovery is on track before you travel home.' },
+  { num: 6, icon: '🏠', title: 'Ongoing Follow-Up', text: 'Virtual consultations with your doctor after you return home. Ongoing medical support and health management for long-term recovery.' },
+];
+
+const TRUST_POINTS = [
+  { title: 'Free patient counselling', text: 'We never charge patients and add no markup — you pay the hospital exactly what you would pay on your own.' },
+  { title: 'One counsellor, start to finish', text: 'The same person handles your medical opinion, visa letter, arrival, treatment and follow-up back home.' },
+  { title: 'Accredited hospitals only', text: 'Every hospital we work with is accredited by NABH or JCI — and we suggest one only after we understand your case.' },
+  { title: 'Medically reviewed content', text: 'Our treatment guides are reviewed by named specialists before publication.' },
+];
+
+const COUNTRY_GUIDES = [
+  { country: 'Zimbabwe', from: 'Harare', to: 'India' },
+  { country: 'Nigeria', from: 'Lagos', to: 'India' },
+  { country: 'Kenya', from: 'Nairobi', to: 'India' },
+  { country: 'Ethiopia', from: 'Addis Ababa', to: 'India' },
+  { country: 'Tanzania', from: 'Dar es Salaam', to: 'India' },
+];
+
+function Home() {
+  const treatments = useQuery({ queryKey: ['treatments'], queryFn: () => getTreatments() });
+  const hospitals = useQuery({ queryKey: ['hospitals'], queryFn: () => getHospitals() });
+  const [currentImage, setCurrentImage] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setCurrentImage(p => (p + 1) % backgroundImages.length), 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <>
+      <Header />
+      <main>
+        <section className="hero hero-slideshow">
+          {backgroundImages.map((src, index) => (
+            <div
+              key={src}
+              className={`hero-background ${index === currentImage ? 'active' : ''}`}
+              style={{ backgroundImage: `url(${src})` }}
+            />
+          ))}
+          <div className="hero-overlay" />
+          <div className="hero-copy">
+            <div className="eyebrow" style={{ color: 'white' }}><span className="eyebrow-dot" />A clearer way to plan care abroad</div>
+            <h1 style={{ color: 'white' }}>Good care starts with a <em>better</em> next step.</h1>
+            <p className="hero-lede" style={{ color: 'white' }}>Discover verified hospitals in India, compare real treatment estimates</p>
+            <SearchBox />
+            <div className="hero-trust">
+              <span className="trust-chip"><ShieldCheck size={15} /> Verified providers</span>
+              <span className="trust-chip"><BadgeCheck size={15} /> Private case journey</span>
+            </div>
+          </div>
+          <div className="hero-visual">
+            <div className="hero-photo">
+              <div className="hero-photo-copy">
+                <span>CAREPATH / 01</span>
+                <strong>Clarity for the<br /><em>journey ahead.</em></strong>
+                <small>One place to discover, compare and move forward.</small>
+              </div>
+              <div className="photo-caption">
+                <span className="live-dot" />International patient desk
+                <div><strong>24/7</strong><small>here to help</small></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="trust-strip">
+          <span>Built for decisions that feel human</span>
+          <div><span><BadgeCheck size={17} /> Real provider data</span></div>
+        </section>
+
+        <section className="section split-section" id="how-it-works">
+          <div className="split-image">
+            <div className="journey-graphic"><span>DISCOVER</span><strong>→</strong><span>COMPARE</span><strong>→</strong><span>PLAN</span><div className="journey-orbit" /></div>
+            <div className="image-tag"><HeartPulse size={18} /> Care that travels with you</div>
+          </div>
+          <div className="split-copy">
+            <span className="kicker">Less searching. More certainty.</span>
+            <h2>Compare the details that actually matter.</h2>
+            <p>Every provider shares treatment-specific estimates, availability, stay guidance and international patient support, so you can make a considered choice.</p>
+            <div className="steps">
+              <div><span>01</span><p><strong>Find your treatment</strong><small>Start with the care you need, not a maze of hospital websites.</small></p></div>
+              <div><span>02</span><p><strong>Compare real options</strong><small>Comparison activates only when multiple verified providers exist.</small></p></div>
+              <div><span>03</span><p><strong>Move forward privately</strong><small>Share reports securely and hear back from your chosen hospital.</small></p></div>
+            </div>
+            <Link className="button button-dark" to="/hospitals">Explore hospitals <ArrowRight size={17} /></Link>
+          </div>
+        </section>
+
+        <section className="section specialty-section">
+          <div className="section-heading">
+            <span className="kicker">Browse by Specialty</span>
+            <h2>Doctors by Specialty</h2>
+            <p className="section-lede">Find Top Doctors in India for all major specialties</p>
+          </div>
+          <div className="specialty-grid">
+            {SPECIALTY_GRID.map((s) => (
+              <Link key={s.name} className="specialty-card" to={`/treatments?search=${encodeURIComponent(s.name)}`}>
+                <div className="specialty-icon">{s.icon}</div>
+                <div className="specialty-name">{s.name}</div>
+              </Link>
+            ))}
+          </div>
+          <div className="section-footer-link">
+            <Link className="inline-link" to="/treatments">View more specialties <ArrowRight size={15} /></Link>
+          </div>
+        </section>
+
+        <section className="section journey-section">
+          <div className="section-heading">
+            <span className="kicker">How it works</span>
+            <h2>Your Medical Journey, Simplified</h2>
+            <p className="section-lede">From your first enquiry to recovery back home — we manage every detail so you can focus on getting better.</p>
+          </div>
+          <div className="journey-grid">
+            {JOURNEY_STEPS.map((step) => (
+              <div className="journey-card" key={step.num}>
+                <div className="journey-card-top">
+                  <span className="journey-num">{step.num}</span>
+                  <span className="journey-icon">{step.icon}</span>
+                </div>
+                <h3>{step.title}</h3>
+                <p>{step.text}</p>
+              </div>
+            ))}
+          </div>
+          <div className="section-footer-link">
+            <Link className="inline-link" to="/register">Learn More <ArrowRight size={15} /></Link>
+          </div>
+        </section>
+
+        <section className="section trust-section">
+          <div className="section-heading">
+            <span className="kicker">Why Ginger Healthcare</span>
+            <h2>Why Patients Trust Us</h2>
+            <p className="section-lede">We're not a booking platform. We're the team that plans your treatment with you — and we're paid by hospitals, never by you.</p>
+          </div>
+          <div className="trust-grid">
+            {TRUST_POINTS.map((point) => (
+              <div className="trust-card" key={point.title}>
+                <h3>{point.title}</h3>
+                <p>{point.text}</p>
+              </div>
+            ))}
+          </div>
+          <div className="section-footer-link">
+            <Link className="inline-link" to="/treatments">Read our editorial policy <ArrowRight size={15} /></Link>
+          </div>
+        </section>
+
+
+
+        <section className="cta-band">
+          <div>
+            <span className="kicker">For hospitals building trust</span>
+            <h2>Make your expertise easier to find.</h2>
+            <p>Join a network designed for transparent treatment discovery and international patient care.</p>
+          </div>
+        </section>
+      </main>
+      <TreatmentSessionColumns treatments={treatments.data} hospitals={hospitals.data} />
+      <Footer />
+    </>
+  );
+}
 
 function HospitalCard({ hospital }) { return <article className="hospital-card"><div className="hospital-image hospital-placeholder"><span className="verified"><BadgeCheck size={14} /> Verified</span><BuildingGlyph /></div><div className="hospital-content"><div className="hospital-meta"><span>{hospital.city}, {hospital.country}</span><span>Verified provider</span></div><h3>{hospital.name}</h3><p>{hospital.description || 'International patient support and treatment planning.'}</p><Link to={`/hospitals/${hospital.slug}`} className="inline-link">View hospital <ArrowRight size={15} /></Link></div></article> }
 function BuildingGlyph() { return <div className="building-glyph"><span /><span /><span /><span /><span /><span /></div> }
@@ -81,16 +263,22 @@ function HospitalRegister() { const [form, setForm] = useState({ name: '', email
 function PatientDashboard() { const query = useQuery({ queryKey: ['cases'], queryFn: getCases }); const [showForm, setShowForm] = useState(false); const [form, setForm] = useState({ hospitalId: '', treatmentId: '', description: '' }); return <><Header /><main className="dashboard-page"><span className="kicker">Patient workspace</span><h1>Your care journey.</h1><p className="detail-lede">Cases, hospital responses and next steps in one private place.</p><div className="dashboard-grid"><section className="dashboard-panel"><div className="panel-heading"><h2>My cases</h2><button className="button button-dark button-small" onClick={() => setShowForm(!showForm)}>Create case <ArrowRight size={15} /></button></div>{showForm && <form className="case-form" onSubmit={async (event) => { event.preventDefault(); await createCase(form); setShowForm(false); query.refetch() }}><input placeholder="Hospital ID" required onChange={(event) => setForm({ ...form, hospitalId: event.target.value })} /><input placeholder="Treatment ID" required onChange={(event) => setForm({ ...form, treatmentId: event.target.value })} /><textarea placeholder="Tell the hospital what you need help with" onChange={(event) => setForm({ ...form, description: event.target.value })} /><button className="button button-coral">Submit case</button></form>}<DataState loading={query.isLoading} error={query.error} empty="Your submitted cases will appear here.">{query.data?.map((item) => <div className="case-row" key={item.id}><div><span className="status-pill">{item.status}</span><h3>{item.treatment.name}</h3><p>{item.hospital.name} · {new Date(item.createdAt).toLocaleDateString()}</p></div><ArrowRight size={18} /></div>)}</DataState></section><aside className="journey-panel"><h2>Journey progress</h2><div className="journey-step done">Case created</div><div className="journey-step">Reports uploaded</div><div className="journey-step">Hospital review</div><div className="journey-step">Appointment</div></aside></div></main><Footer /></> }
 
 function SimplePage({ title, description }) { return <><Header /><main className="simple-page"><div className="simple-panel"><span className="kicker">Carepath</span><h1>{title}</h1><p>{description}</p><Link className="button button-dark" to="/">Back to home <ArrowRight size={17} /></Link></div></main><Footer /></> }
-function Footer() { return <footer><div className="footer-top"><Link className="brand" to="/"><span className="brand-mark"><HeartPulse size={20} /></span><span>carepath</span></Link><p>Clarity for your care journey.</p><div className="footer-links"><Link to="/treatments">Treatments</Link><Link to="/hospitals">Hospitals</Link><Link to="/register">Patients</Link><Link to="/hospital/register">Hospitals</Link></div></div><div className="footer-bottom"><span>© 2026 Carepath. Independent healthcare navigation.</span><span>Medical information is not a diagnosis or medical advice.</span></div></footer> }
+export function Footer() { return <footer><div className="footer-top"><Link className="brand" to="/"><span className="brand-mark"><HeartPulse size={20} /></span><span>carepath</span></Link><p>Clarity for your care journey.</p><div className="footer-links"><Link to="/treatments">Treatments</Link><Link to="/hospitals">Hospitals</Link><Link to="/register">Patients</Link><Link to="/hospital/register">Hospitals</Link></div></div><div className="footer-bottom"><span>© 2026 Carepath. Independent healthcare navigation.</span><span>Medical information is not a diagnosis or medical advice.</span></div></footer> }
 
 function Forbidden() { return <SimplePage title="You do not have access to this workspace." description="Your account role does not authorize this area." /> }
 function AdminDashboard() { return <DashboardShell role="ADMIN" title="Platform foundation." description="Manage role access and prepare the platform for verified providers."><div className="dashboard-grid"><div className="dashboard-panel"><h2>Admin controls</h2><p>Hospital verification, treatment catalog and platform administration are protected by the ADMIN role.</p></div><div className="dashboard-panel"><h2>Release 1</h2><p>Authentication, sessions and role isolation are active.</p></div></div></DashboardShell> }
-function HospitalDashboard() { return <DashboardShell role="HOSPITAL" title="Your hospital workspace." description="Complete your profile and wait for admin verification before publishing provider information."><div className="dashboard-grid"><div className="dashboard-panel"><h2>Verification status</h2><p>Your hospital account is private until an admin approves it.</p></div><div className="dashboard-panel"><h2>Next step</h2><p>Review your hospital profile and submit the information requested by the platform.</p></div></div></DashboardShell> }
+function HospitalDashboard() {
+  const query = useQuery({ queryKey: ['hospital-cases'], queryFn: getHospitalCases });
+  return <DashboardShell role="HOSPITAL" title="Your hospital workspace." description="View patient cases, authorized medical reports, and manage submissions."><div className="dashboard-grid"><div className="dashboard-panel full-width"><span className="kicker">Assigned patient cases</span><h2>Active patient submissions</h2><p className="detail-lede">Only cases submitted to your hospital are visible here. Medical reports remain private and authorized to this hospital only.</p><DataState loading={query.isLoading} error={query.error} empty="No patient cases have been assigned yet."><div className="hospital-case-list">{query.data?.slice(0, 5).map((item) => <article className="dashboard-panel hospital-case-card" key={item.id}><div className="panel-heading"><div><span className="status-pill">{item.status}</span><h3>{item.treatment.name}</h3><p>{item.patient.firstName} {item.patient.lastName} · {new Date(item.createdAt).toLocaleDateString()}</p></div></div><div className="report-list"><strong><FileText size={15} /> Authorized reports</strong>{item.reports?.length > 0 ? item.reports.map((report) => <p key={report.id}><a href={`/api/hospital/cases/${item.id}/reports/${report.id}`} target="_blank" rel="noopener noreferrer" className="report-link">{report.originalName} · {report.category}</a></p>) : <p>No reports uploaded yet for this case.</p>}</div><Link className="inline-link" to={`/hospital/cases/${item.id}`}>View full case details <ArrowRight size={15} /></Link></article>)}</div></DataState></div></div></DashboardShell> }
+
+function HospitalProfilePage() { return <DashboardShell role="HOSPITAL" title="My profile" description="Update your hospital's profile information, contact details, and business settings."><div className="dashboard-grid"><div className="dashboard-panel"><h2>Profile management</h2><p>Edit your hospital's public profile, contact information, and operational details.</p></div></div></DashboardShell> }
+
+function HospitalVerificationPage() { return <DashboardShell role="HOSPITAL" title="Verification" description="Track your hospital's verification status and submit required documentation for admin approval."><div className="dashboard-grid"><div className="dashboard-panel"><h2>Verification status</h2><p>Your hospital's verification progress and pending requirements.</p></div></div></DashboardShell> }
+
+function HospitalTreatmentsPage() {
+  const treatments = useQuery({ queryKey: ['hospital-treatments'], queryFn: getHospitalTreatments });
+  return <DashboardShell role="HOSPITAL" title="Treatments" description="Manage your hospital's treatment catalog, pricing, and availability settings."><div className="dashboard-grid"><div className="dashboard-panel"><span className="kicker">Your offerings</span><h2>Treatment management</h2><DataState loading={treatments.isLoading} error={treatments.error} empty="You haven't added any treatments yet. Click 'Add treatment' in the sidebar to get started."><p className="detail-lede">You currently offer <strong>{treatments.data?.length}</strong> treatment{treatments.data?.length !== 1 ? 's' : ''} to patients:</p><div className="treatment-list">{treatments.data?.map((item) => <article className="marketplace-treatment" key={item.id}><div><span className="specialty">{item.treatment.specialty.name}</span><h3>{item.treatment.name}</h3><p>{item.minEstimatedCost ? `${item.currency} ${Number(item.minEstimatedCost).toLocaleString('en-IN')} – ${Number(item.maxEstimatedCost || item.minEstimatedCost).toLocaleString('en-IN')}` : 'Estimate on request'}{item.hospitalStay ? ` · ${item.hospitalStay} hospital stay` : ''}</p></div><span className={`status-pill status-${item.availability.toLowerCase()}`}>{item.availability.replaceAll('_', ' ')}</span></article>)}</div></DataState></div></div></DashboardShell>
+}
 function HospitalDetailPage() { const { slug } = useParams(); const query = useQuery({ queryKey: ['hospital', slug], queryFn: () => getHospital(slug) }); return <><Header /><PublicHospitalDetail hospital={query.data} treatments={query.data?.treatments} loading={query.isLoading} error={query.error} /><Footer /></> }
 
-export default function App() { const hydrate = useAuth((state) => state.hydrate); useEffect(() => { hydrate() }, [hydrate]); return <Routes><Route path="/" element={<Home />} /><Route path="/treatments" element={<TreatmentDirectory />} /><Route path="/treatments/:slug" element={<TreatmentDetail />} /><Route path="/hospitals" element={<HospitalDirectory />} /><Route path="/hospitals/:slug" element={<HospitalDetailPage />} /><Route path="/compare/hospitals" element={<><Header /><HospitalComparison /><Footer /></>} /><Route path="/cost-calculator" element={<><Header /><CostCalculator /><Footer /></>} /><Route path="/login" element={<AuthPage />} /><Route path="/hospital/login" element={<AuthPage expectedRole="HOSPITAL" />} /><Route path="/admin/login" element={<AuthPage expectedRole="ADMIN" />} /><Route path="/register" element={<AuthPage mode="register" />} /><Route/><Route path="/forbidden" element={<Forbidden />} /><Route path="/patient/dashboard" element={<ProtectedRoute role="PATIENT"><PatientDashboardWorkflow /></ProtectedRoute>} /><Route path="/patient/cases" element={<ProtectedRoute role="PATIENT"><PatientDashboardWorkflow /></ProtectedRoute>} /><Route path="/patient/cases/:id" element={<ProtectedRoute role="PATIENT"><PatientCaseDetail /></ProtectedRoute>} /><Route path="/hospital/dashboard" element={<ProtectedRoute role="HOSPITAL"><HospitalMarketplace /></ProtectedRoute>} /><Route path="/hospital/profile" element={<ProtectedRoute role="HOSPITAL"><HospitalMarketplace /></ProtectedRoute>} /><Route path="/hospital/verification" element={<ProtectedRoute role="HOSPITAL"><HospitalMarketplace /></ProtectedRoute>} /><Route path="/hospital/treatments" element={<ProtectedRoute role="HOSPITAL"><HospitalMarketplace /></ProtectedRoute>} /><Route path="/hospital/treatments/new" element={<ProtectedRoute role="HOSPITAL"><HospitalMarketplace /></ProtectedRoute>} /><Route path="/hospital/treatments/:id/edit" element={<ProtectedRoute role="HOSPITAL"><HospitalMarketplace /></ProtectedRoute>} /><Route path="/hospital/cases" element={<ProtectedRoute role="HOSPITAL"><HospitalCaseManagement /></ProtectedRoute>} /><Route path="/hospital/cases/:id" element={<ProtectedRoute role="HOSPITAL"><HospitalCaseManagement /></ProtectedRoute>} /><Route path="/admin/dashboard" element={<ProtectedRoute role="ADMIN"><AdminMarketplace /></ProtectedRoute>} /><Route path="/admin/hospitals" element={<ProtectedRoute role="ADMIN"><DashboardShell role="ADMIN" title="Hospital Management" description="Manage hospital accounts and their status."><AdminHospitals /></DashboardShell></ProtectedRoute>} /><Route path="/admin/treatments" element={<ProtectedRoute role="ADMIN"><DashboardShell role="ADMIN" title="Treatment directory" description="Manage the global treatment directory."><AdminMarketplace type="treatments" /></DashboardShell></ProtectedRoute>} /><Route path="/admin/hospital-treatments" element={<ProtectedRoute role="ADMIN"><DashboardShell role="ADMIN" title="Hospital Treatment Moderation" description="Review and moderate hospital treatment submissions."><AdminTreatmentModeration /></DashboardShell></ProtectedRoute>} /><Route path="/admin/patients" element={<ProtectedRoute role="ADMIN"><DashboardShell role="ADMIN" title="Registered Patients" description="Overview of registered patient accounts on the platform."><AdminPatients /></DashboardShell></ProtectedRoute>} /><Route path="/admin/cases" element={<ProtectedRoute role="ADMIN"><DashboardShell role="ADMIN" title="Patient Cases" description="Overview of all patient cases submitted to hospitals."><AdminCases /></DashboardShell></ProtectedRoute>} /><Route path="/admin/appointments" element={<ProtectedRoute role="ADMIN"><DashboardShell role="ADMIN" title="Appointments" description="Overview of all requested, confirmed, and completed appointments."><AdminAppointments /></DashboardShell></ProtectedRoute>} /><Route path="/admin/reviews" element={<ProtectedRoute role="ADMIN"><DashboardShell role="ADMIN" title="Hospital Reviews" description="Overview of patient reviews submitted after completed cases."><AdminReviews /></DashboardShell></ProtectedRoute>} /></Routes> }
-
-
-
-
-
+export default function App() { const hydrate = useAuth((state) => state.hydrate); useEffect(() => { hydrate() }, [hydrate]); return <Routes><Route path="/" element={<Home />} /><Route path="/treatments" element={<TreatmentDirectory />} /><Route path="/treatments/:slug" element={<TreatmentDetail />} /><Route path="/hospitals" element={<HospitalDirectory />} /><Route path="/hospitals/:slug" element={<HospitalDetailPage />} /><Route path="/compare/hospitals" element={<><Header /><HospitalComparison /><Footer /></>} /><Route path="/cost-calculator" element={<><Header /><CostCalculator /><Footer /></>} /><Route path="/login" element={<AuthPage />} /><Route path="/hospital/login" element={<AuthPage expectedRole="HOSPITAL" />} /><Route path="/admin/login" element={<AuthPage expectedRole="ADMIN" />} /><Route path="/register" element={<AuthPage mode="register" />} /><Route/><Route path="/forbidden" element={<Forbidden />} /><Route path="/patient/dashboard" element={<ProtectedRoute role="PATIENT"><PatientDashboardWorkflow /></ProtectedRoute>} /><Route path="/patient/cases" element={<ProtectedRoute role="PATIENT"><PatientDashboardWorkflow /></ProtectedRoute>} /><Route path="/patient/cases/:id" element={<ProtectedRoute role="PATIENT"><PatientCaseDetail /></ProtectedRoute>} /><Route path="/hospital/dashboard" element={<ProtectedRoute role="HOSPITAL"><HospitalCaseManagement /></ProtectedRoute>} /><Route path="/hospital/profile" element={<ProtectedRoute role="HOSPITAL"><HospitalProfilePage /></ProtectedRoute>} /><Route path="/hospital/verification" element={<ProtectedRoute role="HOSPITAL"><HospitalVerificationPage /></ProtectedRoute>} /><Route path="/hospital/treatments" element={<ProtectedRoute role="HOSPITAL"><HospitalTreatmentsPage /></ProtectedRoute>} /><Route path="/hospital/treatments/new" element={<ProtectedRoute role="HOSPITAL"><HospitalMarketplace /></ProtectedRoute>} /><Route path="/hospital/treatments/:id/edit" element={<ProtectedRoute role="HOSPITAL"><HospitalMarketplace /></ProtectedRoute>} /><Route path="/hospital/cases" element={<ProtectedRoute role="HOSPITAL"><HospitalCaseManagement /></ProtectedRoute>} /><Route path="/hospital/cases/:id" element={<ProtectedRoute role="HOSPITAL"><HospitalCaseManagement /></ProtectedRoute>} /><Route path="/admin/dashboard" element={<ProtectedRoute role="ADMIN"><AdminMarketplace /></ProtectedRoute>} /><Route path="/admin/hospitals" element={<ProtectedRoute role="ADMIN"><DashboardShell role="ADMIN" title="Hospital Management" description="Manage hospital accounts and their status."><AdminHospitals /></DashboardShell></ProtectedRoute>} /><Route path="/admin/treatments" element={<ProtectedRoute role="ADMIN"><AdminTreatments /></ProtectedRoute>} /><Route path="/admin/hospital-treatments" element={<ProtectedRoute role="ADMIN"><DashboardShell role="ADMIN" title="Hospital Treatment Moderation" description="Review and moderate hospital treatment submissions."><AdminTreatmentModeration /></DashboardShell></ProtectedRoute>} /><Route path="/admin/patients" element={<ProtectedRoute role="ADMIN"><DashboardShell role="ADMIN" title="Registered Patients" description="Overview of registered patient accounts on the platform."><AdminPatients /></DashboardShell></ProtectedRoute>} /><Route path="/admin/cases" element={<ProtectedRoute role="ADMIN"><DashboardShell role="ADMIN" title="Patient Cases" description="Overview of all patient cases submitted to hospitals."><AdminCases /></DashboardShell></ProtectedRoute>} /><Route path="/admin/appointments" element={<ProtectedRoute role="ADMIN"><DashboardShell role="ADMIN" title="Appointments" description="Overview of all requested, confirmed, and completed appointments."><AdminAppointments /></DashboardShell></ProtectedRoute>} /><Route path="/admin/reviews" element={<ProtectedRoute role="ADMIN"><AdminReviews /></ProtectedRoute>} /></Routes> }

@@ -7,6 +7,8 @@ export function CreateHospitalForm({ onSuccess, onCancel }) {
   const initialForm = {
     name: '',
     email: '',
+    password: '',
+    confirmPassword: '',
     city: '',
     country: '',
     description: '',
@@ -30,9 +32,15 @@ export function CreateHospitalForm({ onSuccess, onCancel }) {
     mutationFn: createHospital,
 
     onSuccess: (data) => {
-      setMessage(
-        `Hospital "${data.name}" created successfully. Please copy the temporary password below and share it securely with the hospital.`
-      );
+      if (data.temporaryPassword) {
+        setMessage(
+          `Hospital "${data.name}" created successfully. Please copy the temporary password below and share it securely with the hospital.`
+        );
+      } else {
+        setMessage(
+          `Hospital "${data.name}" created successfully with the password you provided.`
+        );
+      }
 
       setError('');
       setCopied(false);
@@ -44,12 +52,35 @@ export function CreateHospitalForm({ onSuccess, onCancel }) {
     },
 
     onError: (err) => {
-      setError(
+      let errorText =
         err.response?.data?.message ||
-          err.message ||
-          'Failed to create hospital.'
-      );
+        err.message ||
+        'Failed to create hospital.';
 
+      const zodDetails = err.response?.data?.error;
+      if (zodDetails) {
+        const fieldErrors = zodDetails.fieldErrors || {};
+        const formErrors = zodDetails.formErrors || [];
+        const parts = [];
+
+        for (const [field, messages] of Object.entries(fieldErrors)) {
+          if (Array.isArray(messages) && messages.length) {
+            parts.push(
+              `${field.charAt(0).toUpperCase() + field.slice(1)}: ${messages.join('; ')}`
+            );
+          }
+        }
+
+        if (Array.isArray(formErrors) && formErrors.length) {
+          parts.push(...formErrors);
+        }
+
+        if (parts.length) {
+          errorText = `${errorText} — ${parts.join(' | ')}`;
+        }
+      }
+
+      setError(errorText);
       setMessage('');
     },
   });
@@ -121,6 +152,30 @@ export function CreateHospitalForm({ onSuccess, onCancel }) {
             value={form.email}
             onChange={handleChange}
             required
+          />
+        </label>
+
+        <label>
+          Password (leave blank to auto-generate)
+          <input
+            name="password"
+            type="password"
+            value={form.password}
+            onChange={handleChange}
+            minLength={8}
+            placeholder="Minimum 8 characters"
+          />
+        </label>
+
+        <label>
+          Confirm Password
+          <input
+            name="confirmPassword"
+            type="password"
+            value={form.confirmPassword}
+            onChange={handleChange}
+            minLength={8}
+            placeholder="Re-type the password above"
           />
         </label>
 

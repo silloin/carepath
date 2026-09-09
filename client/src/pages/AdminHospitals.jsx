@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
-import { getAdminHospitals, resetHospitalPassword, deleteHospital, updateHospital } from '../api'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { getAdminHospitals, resetHospitalPassword, deleteHospital, updateHospital, verifyHospital } from '../api'
 import { DataState } from '../components/DataState'
 import { CreateHospitalForm } from './CreateHospitalForm'
 import { EditHospitalForm } from './EditHospitalForm'
@@ -9,7 +9,19 @@ export function AdminHospitals() {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [editingHospital, setEditingHospital] = useState(null)
   const [tempPassword, setTempPassword] = useState(null)
+  const queryClient = useQueryClient()
   const hospitalsQuery = useQuery({ queryKey: ['admin-hospitals'], queryFn: getAdminHospitals })
+
+  // Approve/Verify hospital mutation
+  const verifyHospitalMutation = useMutation({
+    mutationFn: ({ id, action }) => verifyHospital(id, action),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['admin-hospitals']);
+    },
+    onError: (err) => {
+      console.error('Failed to verify hospital:', err);
+    },
+  });
 
     const resetPasswordMutation = useMutation({
     mutationFn: resetHospitalPassword,
@@ -26,7 +38,7 @@ export function AdminHospitals() {
     const deleteHospitalMutation = useMutation({
     mutationFn: deleteHospital,
     onSuccess: () => {
-      queryClient.invalidateQueries(['hospitals']);
+      queryClient.invalidateQueries(['admin-hospitals']);
       // Optionally add a success message
     },
     onError: (err) => {
@@ -74,26 +86,54 @@ export function AdminHospitals() {
                 </div>
               </div>
               <div className="moderation-actions">
-                {/* Action buttons will go here */}
-                <button className="button button-small">Edit</button>
-                          <button
-            className="button button-small button-secondary"
-            onClick={() => resetPasswordMutation.mutate(hospital.id)}
-            disabled={resetPasswordMutation.isPending}
-          >
-            Reset Password
-          </button>
-            <button
-              className="button button-small button-danger"
-              onClick={() => {
-              if (window.confirm(`Are you sure you want to delete ${hospital.name}? This action cannot be undone.`)) {
-                deleteHospitalMutation.mutate(hospital.id);
-              }
-            }}
-            disabled={deleteHospitalMutation.isPending}
-          >
-            Delete
-          </button>
+                {/* Only show verification actions if hospital is not already verified */}
+                {hospital.status !== 'VERIFIED' && (
+                  <>
+                    <button
+                      className="button button-small"
+                      onClick={() => verifyHospitalMutation.mutate({ id: hospital.id, action: 'verify' })}
+                      disabled={verifyHospitalMutation.isPending}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      className="button button-small button-secondary"
+                      onClick={() => {
+                        const notes = prompt('Please enter notes for the requested changes:');
+                        if (notes) verifyHospitalMutation.mutate({ id: hospital.id, action: 'request-changes', payload: { notes } });
+                      }}
+                      disabled={verifyHospitalMutation.isPending}
+                    >
+                      Request changes
+                    </button>
+                  </>
+                )}
+                <button
+                  className="button button-small button-secondary"
+                  onClick={() => setEditingHospital(hospital)}
+                >
+                  Edit
+                </button>
+                <button
+                  className="button button-small button-secondary"
+                  onClick={() => resetPasswordMutation.mutate(hospital.id)}
+                  disabled={resetPasswordMutation.isPending}
+                >
+                  Reset Password
+                </button>
+                <button
+                  className="button button-small button-danger"
+                  onClick={() => {
+                    if (hospital.status !== 'SUSPENDED' && window.confirm(`Are you sure you want to suspend ${hospital.name}?`)) {
+                      verifyHospitalMutation.mutate({ id: hospital.id, action: 'suspend' });
+                    } else if (window.confirm(`Are you sure you want to delete ${hospital.name}? This action cannot be undone.`)) {
+                      deleteHospitalMutation.mutate(hospital.id);
+                    }
+                  }}
+                  disabled={deleteHospitalMutation.isPending || verifyHospitalMutation.isPending}
+                >
+                  {hospital.status === 'SUSPENDED' ? 'Delete' : 'Suspend'}
+                </button>
               </div>
             </article>
           ))}
